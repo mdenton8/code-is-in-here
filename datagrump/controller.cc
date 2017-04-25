@@ -5,16 +5,18 @@
 
 using namespace std;
 
+
+  
 /* Default constructor */
 Controller::Controller( const bool debug )
-  : debug_( debug )
+  : debug_( debug ), the_window_size(1), seq_number_sent(0), seq_number_acked(0),  num_acks(0)
 {}
 
 /* Get current window size, in datagrams */
 unsigned int Controller::window_size( void )
 {
   /* Default: fixed window size of 100 outstanding datagrams */
-  unsigned int the_window_size = 50;
+  
 
   if ( debug_ ) {
     cerr << "At time " << timestamp_ms()
@@ -31,6 +33,7 @@ void Controller::datagram_was_sent( const uint64_t sequence_number,
                                     /* in milliseconds */
 {
   /* Default: take no action */
+  seq_number_sent = sequence_number;
 
   if ( debug_ ) {
     cerr << "At time " << send_timestamp
@@ -48,7 +51,15 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
 			       const uint64_t timestamp_ack_received )
                                /* when the ack was received (by sender) */
 {
-  /* Default: take no action */
+  // if (seq_number_sent <= sequence_number_acked && seq_number_sent + the_window_size > sequence_number_acked) {
+  seq_number_acked = sequence_number_acked;
+  num_acks++;
+  // }
+  // cerr << "Num_acks: " << num_acks << ", window size: " << the_window_size << endl;
+  if (num_acks == the_window_size) {
+    the_window_size++;
+    num_acks = 0;
+  }
 
   if ( debug_ ) {
     cerr << "At time " << timestamp_ack_received
@@ -58,7 +69,10 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
 	 << endl;
   }
 }
-
+void Controller::notify_timeout( void ) {
+  the_window_size = (the_window_size > 1) ? the_window_size >> 1 : 1;
+  num_acks = 0;
+}
 /* How long to wait (in milliseconds) if there are no acks
    before sending one more datagram */
 unsigned int Controller::timeout_ms( void )
