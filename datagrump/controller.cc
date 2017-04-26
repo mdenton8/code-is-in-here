@@ -9,7 +9,7 @@ using namespace std;
   
 /* Default constructor */
 Controller::Controller( const bool debug )
-  : debug_( debug ), the_window_size(1), seq_number_sent(0), seq_number_acked(0),  num_acks(0)
+  : debug_( debug ), the_window_size(1.0), seq_number_sent(0), seq_number_acked(0),  num_acks(0)
 {}
 
 /* Get current window size, in datagrams */
@@ -23,7 +23,7 @@ unsigned int Controller::window_size( void )
 	 << " window size is " << the_window_size << endl;
   }
 
-  return the_window_size;
+  return (the_window_size < 1.0) ? 1.0 : (unsigned int)(the_window_size);
 }
 
 /* A datagram was sent */
@@ -56,8 +56,8 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
   num_acks++;
   // }
   // cerr << "Num_acks: " << num_acks << ", window size: " << the_window_size << endl;
-  if (num_acks == the_window_size) {
-    the_window_size++;
+  if (num_acks >= the_window_size) {
+    the_window_size += 0.1;
     num_acks = 0;
   }
 
@@ -70,7 +70,7 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
   }
 }
 void Controller::notify_timeout( void ) {
-  the_window_size = (the_window_size > 1) ? the_window_size >> 1 : 1;
+  the_window_size = (the_window_size > 1.0) ? the_window_size / 3.0 : 1.0;
   num_acks = 0;
 }
 /* How long to wait (in milliseconds) if there are no acks
