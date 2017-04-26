@@ -13,6 +13,7 @@ using namespace std;
 Controller::Controller( const bool debug )
   : debug_( debug ),
     curr_rtt_estimate(200), curr_bw_estimate(1.0), delivered_bytes(0),
+    pacing_gain(1.0), cwnd_gain(1.0),
     packet_send_time(), packet_ack_time(), packet_ack_sent_time(),
     rtt_estimates(), bw_estimates(), packet_delivered()
 {}
@@ -24,7 +25,7 @@ unsigned int Controller::window_size( void )
   // need bytes / 1500
   // curr_rtt_estimate and curr_bw_estimate use ms. Multiplying together gets bytes.
 
-  unsigned int packets = curr_rtt_estimate * curr_bw_estimate / 1472;
+  unsigned int packets = cwnd_gain * (curr_rtt_estimate * curr_bw_estimate) / 1472;
 
   if ( debug_ || true) {
     cerr << "At time " << timestamp_ms()
@@ -33,8 +34,8 @@ unsigned int Controller::window_size( void )
          << endl;
   }
 
-  // if (timestamp_ms() % 3) // randomly set the window to 200 so we can estimate bw better TODO obviously needs to be better
-  //   return 50;
+  if (timestamp_ms() % 4 == 0) // randomly set the window to 60 so we can estimate bw better TODO obviously needs to be better
+    return 60;
 
   return (packets < 1) ? 1 : packets;
 }
@@ -91,7 +92,7 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
 
   uint64_t rtt_est = timestamp_ack_received -
                      packet_send_time[sequence_number_acked]; // convert to ms
-  cerr << "RTT_est: " << rtt_est << endl;
+  cerr << "RTT_est (ms): " << rtt_est << endl;
   rtt_estimates[timestamp_ack_received] = rtt_est;
   // TODO change 200 here
   curr_rtt_estimate = calcMinInTimeWindow(200, timestamp_ack_received, rtt_estimates);
@@ -107,14 +108,14 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
                                          ((double)rtt_est);
   bw_estimates[timestamp_ack_received] = bw_est;
   cerr << "Delivered between ACK and now: " << (delivered_bytes - packet_delivered[sequence_number_acked]) << endl;
-  cerr << "BW_est: " << bw_est * 8 / 1000.0 << endl;
+  cerr << "BW_est (Mbps): " << bw_est * 8 / 1000.0 << endl;
 
 
   // TODO does not update when ACKs are not being received?
   curr_bw_estimate = calcMinInTimeWindow(200, timestamp_ack_received, bw_estimates);
 
-  cerr << "Curr bw estimate: " << (curr_bw_estimate * 8 / 1000.0) << endl;
-  cerr << "Curr rtt estimate: " << (curr_rtt_estimate) << endl;
+  cerr << "Curr bw estimate (Mbps): " << (curr_bw_estimate * 8 / 1000.0) << endl;
+  cerr << "Curr rtt estimate (ms): " << (curr_rtt_estimate) << endl;
 
 
   if ( debug_ || true) {

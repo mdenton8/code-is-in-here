@@ -19,6 +19,8 @@ private:
 
   uint64_t delivered_bytes;
 
+  double pacing_gain, cwnd_gain; // varying parameters for searching space
+
   // map seq_num to sent timestamp
   std::map<uint64_t, uint64_t> packet_send_time;
   std::map<uint64_t, uint64_t> packet_ack_time;
