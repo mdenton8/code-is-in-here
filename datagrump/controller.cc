@@ -27,12 +27,12 @@ unsigned int Controller::window_size( void )
 
   unsigned int packets = cwnd_gain * (curr_rtt_estimate * curr_bw_estimate) / 1472;
 
-  if ( debug_ || true) {
-    cerr << "At time " << timestamp_ms()
-         << " window size is " << packets
-         << " and curr_rtt_estimate * curr_bw_estimate = " << (curr_rtt_estimate * curr_bw_estimate)
-         << endl;
-  }
+  // if ( debug_ || true) {
+  //   cerr << "At time " << timestamp_ms()
+  //        << " window size is " << packets
+  //        << " and curr_rtt_estimate * curr_bw_estimate = " << (curr_rtt_estimate * curr_bw_estimate)
+  //        << endl;
+  // }
 
   if (timestamp_ms() % 4 == 0) // randomly set the window to 60 so we can estimate bw better TODO obviously needs to be better
     return 60;

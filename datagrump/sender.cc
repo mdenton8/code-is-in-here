@@ -139,17 +139,26 @@ int DatagrumpSender::loop( void )
     const ContestMessage ack  = recd.payload;
     got_ack( recd.timestamp, ack );
     return ResultType::Continue;
+  },
+  [this] () {
+    return controller_.timeout_ms();
   } ) );
 
+  poller.on_timeout([this]() { controller_.notify_timeout(); });
+
+  poller.run_threads();
+
+  return 0; // TODO exit status
+
   /* Run these two rules forever */
-  while ( true ) {
-    const auto ret = poller.poll( controller_.timeout_ms() );
-    if ( ret.result == PollResult::Exit ) {
-      return ret.exit_status;
-    } else if ( ret.result == PollResult::Timeout ) {
-      /* After a timeout, send one datagram to try to get things moving again */
-      controller_.notify_timeout();
-      send_datagram();
-    }
-  }
+  // while ( true ) {
+  //   const auto ret = poller.poll( controller_.timeout_ms() );
+  //   if ( ret.result == PollResult::Exit ) {
+  //     return ret.exit_status;
+  //   } else if ( ret.result == PollResult::Timeout ) {
+  //     /* After a timeout, send one datagram to try to get things moving again */
+  //     controller_.notify_timeout();
+  //     send_datagram();
+  //   }
+  // }
 }
