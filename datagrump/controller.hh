@@ -2,6 +2,9 @@
 #define CONTROLLER_HH
 
 #include <cstdint>
+#include <map>
+#include <vector>
+// #include <deque>
 
 /* Congestion controller interface */
 
@@ -9,11 +12,25 @@ class Controller
 {
 private:
   bool debug_; /* Enables debugging output */
-  double the_window_size;
-  uint64_t seq_number_sent;
-  uint64_t seq_number_acked;
-  uint64_t num_acks;
   /* Add member variables here */
+
+  uint64_t curr_rtt_estimate;
+  double curr_bw_estimate;
+
+  uint64_t delivered_bytes;
+
+  // map seq_num to sent timestamp
+  std::map<uint64_t, uint64_t> packet_send_time;
+  std::map<uint64_t, uint64_t> packet_ack_time;
+  std::map<uint64_t, uint64_t> packet_ack_sent_time;
+
+  // timestamp of ACK received, and rtt estimate
+  std::map<uint64_t, uint64_t> rtt_estimates;
+
+  std::map<uint64_t, double> bw_estimates;
+
+  // map seq_num to delivered
+  std::map<uint64_t, uint64_t> packet_delivered;
 
 public:
   /* Public interface for the congestion controller */
