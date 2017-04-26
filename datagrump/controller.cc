@@ -7,7 +7,8 @@
 
 using namespace std;
 
-
+// TODO a lot of shit in this controller is not thread-safe. That shall be fixed
+// TODO need to sleep the sender when window not open
 
 /* Default constructor */
 Controller::Controller( const bool debug )
