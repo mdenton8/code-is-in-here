@@ -14,7 +14,7 @@ using namespace std;
 Controller::Controller( const bool debug )
   : debug_( debug ), bw_time_window(500), rtt_time_window(30000),
     curr_rtt_estimate(40), curr_bw_estimate(1.0), delivered_bytes(0),
-    pacing_gain(1.0), cwnd_gain(1.5),
+    pacing_gain(1.0), cwnd_gain(2),
     phase(0), time_to_change_phase(40),
     packet_send_time(), packet_ack_time(), packet_ack_sent_time(),
     rtt_estimates(), bw_estimates(), packet_delivered(),
@@ -156,16 +156,18 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
   }
 
   // update pacing_gain based on phase
-  if (phase == 0) {
+  if (phase == 0 || phase > 6) { // TODO constant
+    phase = 0;
     // pacing_gain goes up
     pacing_gain = 1.25; // TODO constant
+    cwnd_gain = 2.0;
   } else if (phase == 1) {
     // TODO may not want to do if bandwidth estimate increases
     pacing_gain = 0.75;
-  } else if (phase <= 6) { // TODO constant
-    pacing_gain = 1;
+    cwnd_gain = 1.0;
   } else {
-    phase = 0;
+    pacing_gain = 1;
+    cwnd_gain = 1.25;
   }
 }
 void Controller::notify_timeout( void ) {
