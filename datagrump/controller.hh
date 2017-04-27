@@ -10,8 +10,6 @@ class Controller
 private:
   bool debug_; /* Enables debugging output */
   unsigned int the_window_size;
-  uint64_t seq_number_sent;
-  uint64_t seq_number_acked;
   uint64_t num_acks;
   /* Add member variables here */
 
