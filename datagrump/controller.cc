@@ -12,7 +12,7 @@ using namespace std;
 
 /* Default constructor */
 Controller::Controller( const bool debug )
-  : debug_( debug ), bw_time_window(500), rtt_time_window(2000),
+  : debug_( debug ), bw_time_window(500), rtt_time_window(30000),
     curr_rtt_estimate(40), curr_bw_estimate(1.0), delivered_bytes(0),
     pacing_gain(1.0), cwnd_gain(1.5),
     phase(0), time_to_change_phase(40),
@@ -65,7 +65,7 @@ template<typename T>
 static T calcMaxInTimeWindow(uint64_t time_window, uint64_t curr_time,
                              map<uint64_t, T>& m) {
 
-  auto left_time_window = m.lower_bound (curr_time - time_window);
+  auto left_time_window = (curr_time > time_window) ? m.lower_bound (curr_time - time_window) : m.begin();
   auto right_time_window = m.upper_bound (curr_time);
 
   T max_bw = numeric_limits<T>::min();
@@ -80,7 +80,7 @@ template<typename T>
 static T calcMinInTimeWindow(uint64_t time_window, uint64_t curr_time,
                              map<uint64_t, T>& m) {
 
-  auto left_time_window = m.lower_bound (curr_time - time_window);
+  auto left_time_window = (curr_time > time_window) ? m.lower_bound (curr_time - time_window) : m.begin();
   auto right_time_window = m.upper_bound (curr_time);
 
   T min_rtt = numeric_limits<T>::max();
