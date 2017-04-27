@@ -21,14 +21,19 @@ Controller::Controller( const bool debug )
     global_lock()
 {}
 
+static bool start_up = false;
+static double prev_bw_estimate;
+static int startup_bw_counter;
+static bool start_up_drain = false;
 /* Get current window size, in datagrams */
 unsigned int Controller::window_size( void )
 {
   std::lock_guard<std::mutex> lock(global_lock);
   // need bytes / 1500
   // curr_rtt_estimate and curr_bw_estimate use ms. Multiplying together gets bytes.
+  unsigned int packets;
 
-  unsigned int packets = cwnd_gain * (curr_rtt_estimate * curr_bw_estimate) / 1472;
+  packets = cwnd_gain * (curr_rtt_estimate * curr_bw_estimate) / 1472;
 
   // if ( debug_ || true) {
   //   cerr << "At time " << timestamp_ms()
@@ -40,7 +45,17 @@ unsigned int Controller::window_size( void )
   // if (timestamp_ms() % 4 == 0) // randomly set the window to 60 so we can estimate bw better TODO obviously needs to be better
   //   return 60;
 
-  return (packets < 1) ? 1 : packets;
+  if (packets <= 1 && !start_up) { // TODO maybe set 1 to be higher, or judge based on bandwidth
+    // low window--transition into startup phase.
+    time_to_change_phase = timestamp_ms() + curr_rtt_estimate;
+    prev_bw_estimate = curr_bw_estimate;
+    start_up = true;
+    startup_bw_counter = 0;
+    pacing_gain = 2 / 0.6931471;
+    cwnd_gain = 2 / 0.6931471;
+  }
+
+  return packets < 1 ? 1 : packets;
 }
 
 /* A datagram was sent */
@@ -148,26 +163,60 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
 
   // screw with pacing_gain
 
-  // update phase if necessary
-  if (timestamp_ack_received >= time_to_change_phase) {
-    phase ++;
-    // change phase curr_rtt_estimate ms away from now (TODO maybe drain phase should get extra time if Probe phase got extra time?)
-    time_to_change_phase = timestamp_ack_received + curr_rtt_estimate;
-  }
+  if (start_up) {
+    if (time_to_change_phase >= timestamp_ack_received) {
+      time_to_change_phase = timestamp_ack_received + curr_rtt_estimate;
 
-  // update pacing_gain based on phase
-  if (phase == 0 || phase > 6) { // TODO constant
-    phase = 0;
-    // pacing_gain goes up
-    pacing_gain = 1.25; // TODO constant
-    cwnd_gain = 2.0;
-  } else if (phase == 1) {
-    // TODO may not want to do if bandwidth estimate increases
-    pacing_gain = 0.75;
-    cwnd_gain = 1.0;
-  } else {
-    pacing_gain = 1;
-    cwnd_gain = 1.25;
+      // after one RTTProp, check to see if we have reached a plateau in bandwidth
+
+      // pacing_gain = pacing_gain * 2 / 0.6931471;
+      // cwnd_gain = cwnd_gain * 2 / 0.6931471;
+      if (1.25 * prev_bw_estimate > curr_bw_estimate)
+        startup_bw_counter++;
+      if (startup_bw_counter >= 2) { // TODO maybe change
+        // exit startup if we have hit a plateau
+        start_up = false;
+        start_up_drain = true;
+        pacing_gain = 1 / pacing_gain;
+        cwnd_gain = 1.25;
+        time_to_change_phase = timestamp_ack_received + curr_rtt_estimate;
+      }
+      // record bw_estimate
+      prev_bw_estimate = curr_bw_estimate;
+    }
+  }
+  else {
+    if (start_up_drain) {
+      // spend just one RTTProp in startup_drain phase, then reset pacing gain and time_to_change_phase
+      if (time_to_change_phase <= timestamp_ack_received) {
+        start_up_drain = false;
+        pacing_gain = 1.0;
+        time_to_change_phase = timestamp_ack_received + curr_rtt_estimate;
+      }
+    }
+    else { // if not in startup or startup drain, do steady state
+      // update phase if necessary
+      if (timestamp_ack_received >= time_to_change_phase) {
+        phase ++;
+        // change phase curr_rtt_estimate ms away from now (TODO maybe drain phase should get extra time if Probe phase got extra time?)
+        time_to_change_phase = timestamp_ack_received + curr_rtt_estimate;
+      }
+
+      // update pacing_gain based on phase
+      if (phase == 0 || phase > 6) { // TODO constant
+        phase = 0;
+        // pacing_gain goes up
+        pacing_gain = 1.25; // TODO constant
+        cwnd_gain = 2.0;
+      } else if (phase == 1) {
+        // TODO may not want to do if bandwidth estimate increases
+        pacing_gain = 0.75;
+        cwnd_gain = 1.0;
+      } else {
+        pacing_gain = 1;
+        cwnd_gain = 1.25;
+      }
+    }
   }
 }
 void Controller::notify_timeout( void ) {
