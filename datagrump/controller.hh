@@ -9,8 +9,11 @@ class Controller
 {
 private:
   bool debug_; /* Enables debugging output */
-  unsigned int the_window_size;
+  double the_window_size;
   uint64_t num_acks;
+
+  double old_window_size;
+  uint64_t old_num_acks;
   /* Add member variables here */
 
 public:

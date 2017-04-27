@@ -5,11 +5,12 @@
 
 using namespace std;
 
-static const int cutoff = 400;
+static const int cutoff = 75;
   
 /* Default constructor */
 Controller::Controller( const bool debug )
-  : debug_( debug ), the_window_size(1),  num_acks(0)
+  : debug_( debug ), the_window_size(1.0),  num_acks(0),
+  old_window_size(0.0), old_num_acks(0)
 {}
 
 /* Get current window size, in datagrams */
@@ -18,12 +19,13 @@ unsigned int Controller::window_size( void )
   /* Default: fixed window size of 100 outstanding datagrams */
   
 
-  if ( debug_ ) {
+  if ( debug_ || true) {
     cerr << "At time " << timestamp_ms()
 	 << " window size is " << the_window_size << endl;
   }
 
-  return the_window_size;
+
+  return (the_window_size < 1) ? 1 : (unsigned int)(the_window_size);
 }
 
 /* A datagram was sent */
@@ -51,19 +53,30 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
                                /* when the ack was received (by sender) */
 {
   
-  if (timestamp_ack_received > cutoff)
+  // if we cut in half, wait until one whole window has cleared.
+  if ((timestamp_ack_received - send_timestamp_acked) > cutoff && old_num_acks >= old_window_size)
   {
+    old_window_size = the_window_size;
+    old_num_acks = 0;
+
+
     num_acks = 0;
-    the_window_size = (the_window_size > 1) ? the_window_size >> 1 : 1;
+    the_window_size = (the_window_size > 1) ? the_window_size / 1.3 : 1;
   }
   else
   {
-    num_acks++;
-    if (num_acks == the_window_size)
-      the_window_size++;
+
+    // if in "recovery" state, wait until out to start increasing window size again.
+    if (old_num_acks < old_window_size)
+      old_num_acks++;
+    else {
+      num_acks++;
+      if (num_acks >= the_window_size)
+        the_window_size += 0.45;
+    }
   }
 
-  if ( debug_ ) {
+  if ( debug_ || true) {
     cerr << "At time " << timestamp_ack_received
 	 << " received ack for datagram " << sequence_number_acked
 	 << " (send @ time " << send_timestamp_acked
@@ -72,7 +85,7 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
   }
 }
 void Controller::notify_timeout( void ) {
-  the_window_size = (the_window_size > 1) ? the_window_size >> 1 : 1;
+  the_window_size = (the_window_size > 1) ? the_window_size / 5 : 1;
   num_acks = 0;
 }
 /* How long to wait (in milliseconds) if there are no acks
