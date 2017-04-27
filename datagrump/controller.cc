@@ -12,7 +12,7 @@ using namespace std;
 
 /* Default constructor */
 Controller::Controller( const bool debug )
-  : debug_( debug ), bw_time_window(500), rtt_time_window(2000),
+  : debug_( debug ), bw_time_window(500), rtt_time_window(30000),
     curr_rtt_estimate(150), curr_bw_estimate(1.0), delivered_bytes(0),
     pacing_gain(1.0), cwnd_gain(1.0),
     packet_send_time(), packet_ack_time(), packet_ack_sent_time(),
@@ -37,7 +37,7 @@ unsigned int Controller::window_size( void )
   // }
 
   if (timestamp_ms() % 4 == 0) // randomly set the window to 60 so we can estimate bw better TODO obviously needs to be better
-    return 60;
+    return 30;
 
   return (packets < 1) ? 1 : packets;
 }
@@ -64,7 +64,7 @@ template<typename T>
 static T calcMaxInTimeWindow(uint64_t time_window, uint64_t curr_time,
                              map<uint64_t, T>& m) {
 
-  auto left_time_window = m.lower_bound (curr_time - time_window);
+  auto left_time_window = (curr_time > time_window) ? m.lower_bound (curr_time - time_window) : m.begin();
   auto right_time_window = m.upper_bound (curr_time);
 
   T max_bw = numeric_limits<T>::min();
@@ -79,7 +79,7 @@ template<typename T>
 static T calcMinInTimeWindow(uint64_t time_window, uint64_t curr_time,
                              map<uint64_t, T>& m) {
 
-  auto left_time_window = m.lower_bound (curr_time - time_window);
+  auto left_time_window = (curr_time > time_window) ? m.lower_bound (curr_time - time_window) : m.begin();
   auto right_time_window = m.upper_bound (curr_time);
 
   T min_rtt = numeric_limits<T>::max();
