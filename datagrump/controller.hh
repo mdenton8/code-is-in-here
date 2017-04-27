@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <map>
 #include <vector>
+#include <mutex>
 // #include <deque>
 
 /* Congestion controller interface */
@@ -33,6 +34,8 @@ private:
 
   // map seq_num to delivered
   std::map<uint64_t, uint64_t> packet_delivered;
+
+  std::mutex global_lock;
 
 public:
   /* Public interface for the congestion controller */

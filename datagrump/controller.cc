@@ -16,13 +16,14 @@ Controller::Controller( const bool debug )
     curr_rtt_estimate(200), curr_bw_estimate(1.0), delivered_bytes(0),
     pacing_gain(1.0), cwnd_gain(1.0),
     packet_send_time(), packet_ack_time(), packet_ack_sent_time(),
-    rtt_estimates(), bw_estimates(), packet_delivered()
+    rtt_estimates(), bw_estimates(), packet_delivered(),
+    global_lock()
 {}
 
 /* Get current window size, in datagrams */
 unsigned int Controller::window_size( void )
 {
-
+  std::lock_guard<std::mutex> lock(global_lock);
   // need bytes / 1500
   // curr_rtt_estimate and curr_bw_estimate use ms. Multiplying together gets bytes.
 
@@ -47,6 +48,7 @@ void Controller::datagram_was_sent( const uint64_t sequence_number,
                                     const uint64_t send_timestamp )
 /* in milliseconds */
 {
+  std::lock_guard<std::mutex> lock(global_lock);
   // TODO garbage collection
   packet_send_time[sequence_number] = send_timestamp;
   packet_delivered[sequence_number] = delivered_bytes;
@@ -83,6 +85,7 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
                                const uint64_t timestamp_ack_received )
 /* when the ack was received (by sender) */
 {
+  std::lock_guard<std::mutex> lock(global_lock);
   // TODO garbage collection
   packet_ack_time[sequence_number_acked] = timestamp_ack_received;
   packet_ack_sent_time[sequence_number_acked] = recv_timestamp_acked;
@@ -106,7 +109,7 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
   // NOTE that bw_estimates is in bytes/ms
   delivered_bytes += 1472;
   double bw_est = (delivered_bytes - packet_delivered[sequence_number_acked]) /
-                                         ((double)rtt_est);
+                  ((double)rtt_est);
   bw_estimates[timestamp_ack_received] = bw_est;
   cerr << "Delivered between ACK and now: " << (delivered_bytes - packet_delivered[sequence_number_acked]) << endl;
   cerr << "BW_est (Mbps): " << bw_est * 8 / 1000.0 << endl;
@@ -128,10 +131,12 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
   }
 }
 void Controller::notify_timeout( void ) {
+  std::lock_guard<std::mutex> lock(global_lock);
 }
 /* How long to wait (in milliseconds) if there are no acks
    before sending one more datagram */
 unsigned int Controller::timeout_ms( void )
 {
+  std::lock_guard<std::mutex> lock(global_lock);
   return 1000; /* timeout of one second */
 }
