@@ -15,8 +15,8 @@ private:
   bool debug_; /* Enables debugging output */
   /* Add member variables here */
 
-  uint64_t curr_rtt_estimate;
-  double curr_bw_estimate;
+  uint64_t curr_rtt_estimate; // ms
+  double curr_bw_estimate; // bytes/ms
 
   uint64_t delivered_bytes;
 
@@ -63,6 +63,9 @@ public:
   unsigned int timeout_ms( void );
 
   void notify_timeout( void );
+
+  double get_bw_estimate();
+  double get_pacing_gain();
 };
 
 #endif

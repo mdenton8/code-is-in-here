@@ -2,6 +2,8 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <thread>
+#include <chrono>
 
 #include "socket.hh"
 #include "contest_message.hh"
@@ -125,7 +127,12 @@ int DatagrumpSender::loop( void )
     /* Close the window */
     while ( window_is_open() ) {
       send_datagram();
+      uint64_t time_to_wait =
+        1472.0 / (controller_.get_pacing_gain() * controller_.get_bw_estimate());
+      std::this_thread::sleep_for(std::chrono::milliseconds(time_to_wait));
     }
+    // sleep this poller thread until the next time we can send
+    // TODO check 1472
     return ResultType::Continue;
   },
   /* We're only interested in this rule when the window is open */

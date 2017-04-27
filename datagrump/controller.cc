@@ -92,10 +92,10 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
 
 
   cerr << "--------------------------------------------" << endl;
-  cerr << "Packet sent time: " << packet_send_time[sequence_number_acked] << endl;
+  cerr << "Packet sent time: " << send_timestamp_acked << endl;
 
   uint64_t rtt_est = timestamp_ack_received -
-                     packet_send_time[sequence_number_acked]; // convert to ms
+                     send_timestamp_acked; // convert to ms
   cerr << "RTT_est (ms): " << rtt_est << endl;
   rtt_estimates[timestamp_ack_received] = rtt_est;
   // TODO change 200 here
@@ -139,4 +139,16 @@ unsigned int Controller::timeout_ms( void )
 {
   std::lock_guard<std::mutex> lock(global_lock);
   return 1000; /* timeout of one second */
+}
+
+double Controller::get_bw_estimate()
+{
+  std::lock_guard<std::mutex> lock(global_lock);
+  return curr_bw_estimate;
+}
+
+double Controller::get_pacing_gain()
+{
+  std::lock_guard<std::mutex> lock(global_lock);
+  return pacing_gain;
 }
