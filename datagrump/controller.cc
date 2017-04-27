@@ -12,7 +12,7 @@ using namespace std;
 
 /* Default constructor */
 Controller::Controller( const bool debug )
-  : debug_( debug ), bw_time_window(500), rtt_time_window(30000),
+  : debug_( debug ), bw_time_window(240), rtt_time_window(30000),
     curr_rtt_estimate(40), curr_bw_estimate(1.0), delivered_bytes(0),
     pacing_gain(1.0), cwnd_gain(2),
     phase(0), time_to_change_phase(40),
@@ -164,7 +164,8 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
   // screw with pacing_gain
 
   if (start_up) {
-    if (time_to_change_phase >= timestamp_ack_received) {
+    cerr << "Received ACK in startup!" << endl;
+    if (timestamp_ack_received >= time_to_change_phase) {
       time_to_change_phase = timestamp_ack_received + curr_rtt_estimate;
 
       // after one RTTProp, check to see if we have reached a plateau in bandwidth
@@ -173,13 +174,16 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
       // cwnd_gain = cwnd_gain * 2 / 0.6931471;
       if (1.25 * prev_bw_estimate > curr_bw_estimate)
         startup_bw_counter++;
-      if (startup_bw_counter >= 2) { // TODO maybe change
+      else
+        startup_bw_counter = 0; // else reset
+
+      if (startup_bw_counter >= 3) { // TODO maybe change
         // exit startup if we have hit a plateau
         start_up = false;
         start_up_drain = true;
         pacing_gain = 1 / pacing_gain;
-        cwnd_gain = 1.25;
-        time_to_change_phase = timestamp_ack_received + curr_rtt_estimate;
+        cwnd_gain = 1.00;
+        time_to_change_phase = timestamp_ack_received + startup_bw_counter * curr_rtt_estimate;
       }
       // record bw_estimate
       prev_bw_estimate = curr_bw_estimate;
@@ -187,17 +191,22 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
   }
   else {
     if (start_up_drain) {
-      // spend just one RTTProp in startup_drain phase, then reset pacing gain and time_to_change_phase
-      if (time_to_change_phase <= timestamp_ack_received) {
+      cerr << "Received ACK in startup drain! RTT_est = " << rtt_est << ", curr rtt estimate = " << curr_rtt_estimate << endl;
+      // stay in drain until RTT=RTTprop, then reset pacing gain and time_to_change_phase
+      if (1.1 * curr_rtt_estimate > rtt_est) {
         start_up_drain = false;
         pacing_gain = 1.0;
         time_to_change_phase = timestamp_ack_received + curr_rtt_estimate;
+        prev_bw_estimate = curr_bw_estimate;
       }
     }
     else { // if not in startup or startup drain, do steady state
       // update phase if necessary
       if (timestamp_ack_received >= time_to_change_phase) {
-        phase ++;
+        if (!(phase == 0 && 1.1 * prev_bw_estimate < curr_bw_estimate)) {
+          phase ++;
+        }
+        prev_bw_estimate = curr_bw_estimate;
         // change phase curr_rtt_estimate ms away from now (TODO maybe drain phase should get extra time if Probe phase got extra time?)
         time_to_change_phase = timestamp_ack_received + curr_rtt_estimate;
       }
@@ -207,14 +216,14 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
         phase = 0;
         // pacing_gain goes up
         pacing_gain = 1.25; // TODO constant
-        cwnd_gain = 2.0;
+        cwnd_gain = 1.5;
       } else if (phase == 1) {
         // TODO may not want to do if bandwidth estimate increases
         pacing_gain = 0.75;
         cwnd_gain = 1.0;
       } else {
         pacing_gain = 1;
-        cwnd_gain = 1.25;
+        cwnd_gain = 1.1;
       }
     }
   }
