@@ -14,7 +14,8 @@ class Controller
 private:
   bool debug_; /* Enables debugging output */
   /* Add member variables here */
-
+  uint64_t bw_time_window;
+  uint64_t rtt_time_window;
   uint64_t curr_rtt_estimate;
   double curr_bw_estimate;
 
