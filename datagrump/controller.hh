@@ -13,14 +13,17 @@ class Controller
 {
 private:
   bool debug_; /* Enables debugging output */
-  /* Add member variables here */
-
+  uint64_t bw_time_window;
+  uint64_t rtt_time_window;
   uint64_t curr_rtt_estimate; // ms
   double curr_bw_estimate; // bytes/ms
 
   uint64_t delivered_bytes;
 
   double pacing_gain, cwnd_gain; // varying parameters for searching space
+
+  uint64_t phase;
+  uint64_t time_to_change_phase;
 
   // map seq_num to sent timestamp
   std::map<uint64_t, uint64_t> packet_send_time;
