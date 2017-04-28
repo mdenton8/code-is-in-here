@@ -2,6 +2,8 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <thread>
+#include <chrono>
 
 #include "socket.hh"
 #include "contest_message.hh"
@@ -31,13 +33,13 @@ private:
 
 public:
   DatagrumpSender( const char * const host, const char * const port,
-		   const bool debug );
+                   const bool debug );
   int loop( void );
 };
 
 int main( int argc, char *argv[] )
 {
-   /* check the command-line arguments */
+  /* check the command-line arguments */
   if ( argc < 1 ) { /* for sticklers */
     abort();
   }
@@ -59,8 +61,8 @@ int main( int argc, char *argv[] )
 }
 
 DatagrumpSender::DatagrumpSender( const char * const host,
-				  const char * const port,
-				  const bool debug )
+                                  const char * const port,
+                                  const bool debug )
   : socket_(),
     controller_( debug ),
     sequence_number_( 0 ),
@@ -72,13 +74,13 @@ DatagrumpSender::DatagrumpSender( const char * const host,
   /* connect socket to the remote host */
   /* (note: this doesn't send anything; it just tags the socket
      locally with the remote address */
-  socket_.connect( Address( host, port ) );  
+  socket_.connect( Address( host, port ) );
 
   cerr << "Sending to " << socket_.peer_address().to_string() << endl;
 }
 
 void DatagrumpSender::got_ack( const uint64_t timestamp,
-			       const ContestMessage & ack )
+                               const ContestMessage & ack )
 {
   if ( not ack.is_ack() ) {
     throw runtime_error( "sender got something other than an ack from the receiver" );
@@ -86,13 +88,13 @@ void DatagrumpSender::got_ack( const uint64_t timestamp,
 
   /* Update sender's counter */
   next_ack_expected_ = max( next_ack_expected_,
-			    ack.header.ack_sequence_number + 1 );
+                            ack.header.ack_sequence_number + 1 );
 
   /* Inform congestion controller */
   controller_.ack_received( ack.header.ack_sequence_number,
-			    ack.header.ack_send_timestamp,
-			    ack.header.ack_recv_timestamp,
-			    timestamp );
+                            ack.header.ack_send_timestamp,
+                            ack.header.ack_recv_timestamp,
+                            timestamp );
 }
 
 void DatagrumpSender::send_datagram( void )
@@ -106,7 +108,7 @@ void DatagrumpSender::send_datagram( void )
 
   /* Inform congestion controller */
   controller_.datagram_was_sent( cm.header.sequence_number,
-				 cm.header.send_timestamp );
+                                 cm.header.send_timestamp );
 }
 
 bool DatagrumpSender::window_is_open( void )
@@ -122,33 +124,48 @@ int DatagrumpSender::loop( void )
   /* first rule: if the window is open, close it by
      sending more datagrams */
   poller.add_action( Action( socket_, Direction::Out, [&] () {
-	/* Close the window */
-	while ( window_is_open() ) {
-	  send_datagram();
-	}
-	return ResultType::Continue;
-      },
-      /* We're only interested in this rule when the window is open */
-      [&] () { return window_is_open(); } ) );
+    /* Close the window */
+    while ( window_is_open() ) {
+      send_datagram();
+      uint64_t time_to_wait =
+        1472.0 / (controller_.get_pacing_gain() * controller_.get_bw_estimate());
+      std::this_thread::sleep_for(std::chrono::milliseconds(time_to_wait));
+    }
+    // sleep this poller thread until the next time we can send
+    // TODO check 1472
+    return ResultType::Continue;
+  },
+  /* We're only interested in this rule when the window is open */
+  [&] () { return window_is_open(); } ) );
 
   /* second rule: if sender receives an ack,
      process it and inform the controller
      (by using the sender's got_ack method) */
   poller.add_action( Action( socket_, Direction::In, [&] () {
-	const UDPSocket::received_datagram recd = socket_.recv();
-	const ContestMessage ack  = recd.payload;
-	got_ack( recd.timestamp, ack );
-	return ResultType::Continue;
-      } ) );
+    const UDPSocket::received_datagram recd = socket_.recv();
+    const ContestMessage ack  = recd.payload;
+    got_ack( recd.timestamp, ack );
+    return ResultType::Continue;
+  },
+  [this] () {
+    return controller_.timeout_ms();
+  } ) );
+
+  poller.on_timeout([this]() { controller_.notify_timeout(); });
+
+  poller.run_threads();
+
+  return 0; // TODO exit status
 
   /* Run these two rules forever */
-  while ( true ) {
-    const auto ret = poller.poll( controller_.timeout_ms() );
-    if ( ret.result == PollResult::Exit ) {
-      return ret.exit_status;
-    } else if ( ret.result == PollResult::Timeout ) {
-      /* After a timeout, send one datagram to try to get things moving again */
-      send_datagram();
-    }
-  }
+  // while ( true ) {
+  //   const auto ret = poller.poll( controller_.timeout_ms() );
+  //   if ( ret.result == PollResult::Exit ) {
+  //     return ret.exit_status;
+  //   } else if ( ret.result == PollResult::Timeout ) {
+  //     /* After a timeout, send one datagram to try to get things moving again */
+  //     controller_.notify_timeout();
+  //     send_datagram();
+  //   }
+  // }
 }
