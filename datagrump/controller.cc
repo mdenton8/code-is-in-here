@@ -22,9 +22,19 @@ Controller::Controller( const bool debug )
 {}
 
 static bool start_up = false;
-static double prev_bw_estimate;
+static double prev_phase_bw_estimate;
 static int startup_bw_counter;
 static bool start_up_drain = false;
+
+// TODO FIXME use downward slope to adjust pacing gain
+// TODO FIXME don't probe upwards during downwards slope
+
+// static double curr_bw_slope_estimate = 1.0;
+// static double curr_bw_estimate_timestamp = 1.0;
+
+
+static double extra_gain = 1.0;
+
 /* Get current window size, in datagrams */
 unsigned int Controller::window_size( void )
 {
@@ -48,11 +58,12 @@ unsigned int Controller::window_size( void )
   if (packets <= 1 && !start_up) { // TODO maybe set 1 to be higher, or judge based on bandwidth
     // low window--transition into startup phase.
     time_to_change_phase = timestamp_ms() + curr_rtt_estimate;
-    prev_bw_estimate = curr_bw_estimate;
+    prev_phase_bw_estimate = curr_bw_estimate;
     start_up = true;
     startup_bw_counter = 0;
     pacing_gain = 1.5 / 0.6931471;
     cwnd_gain = 1.5 / 0.6931471;
+    extra_gain = 1.0;
   }
 
   return packets < 1 ? 1 : packets;
@@ -175,7 +186,7 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
 
       // pacing_gain = pacing_gain * 2 / 0.6931471;
       // cwnd_gain = cwnd_gain * 2 / 0.6931471;
-      if (1.25 * prev_bw_estimate > curr_bw_estimate)
+      if (1.25 * prev_phase_bw_estimate > curr_bw_estimate)
         startup_bw_counter++;
       else
         startup_bw_counter = 0; // else reset
@@ -189,7 +200,7 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
         time_to_change_phase = timestamp_ack_received + startup_bw_counter * curr_rtt_estimate;
       }
       // record bw_estimate
-      prev_bw_estimate = curr_bw_estimate;
+      prev_phase_bw_estimate = curr_bw_estimate;
     }
   }
   else {
@@ -200,29 +211,35 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
         start_up_drain = false;
         pacing_gain = 1.0;
         time_to_change_phase = timestamp_ack_received + curr_rtt_estimate;
-        prev_bw_estimate = curr_bw_estimate;
+        prev_phase_bw_estimate = curr_bw_estimate;
       }
     }
     else { // if not in startup or startup drain, do steady state
       // update phase if necessary
+
       if (timestamp_ack_received >= time_to_change_phase) {
-        if (!(phase == 0 && 1.1 * prev_bw_estimate < curr_bw_estimate)) {
+        if (!(phase == 0 && 1.1 * prev_phase_bw_estimate < curr_bw_estimate)) {
           phase ++;
+          extra_gain = 1.0;
+        } else {
+          extra_gain += 0.1;
         }
-        prev_bw_estimate = curr_bw_estimate;
+        prev_phase_bw_estimate = curr_bw_estimate;
         // change phase curr_rtt_estimate ms away from now (TODO maybe drain phase should get extra time if Probe phase got extra time?)
         time_to_change_phase = timestamp_ack_received + curr_rtt_estimate;
       }
       if (rtt_est > curr_rtt_estimate * 4 && phase != 1) {
           phase = 1;
           time_to_change_phase = timestamp_ack_received + curr_rtt_estimate;
+          extra_gain = 1.0;
       }
       // update pacing_gain based on phase
       if (phase == 0 || phase > 6) { // TODO constant
         phase = 0;
         // pacing_gain goes up
-        pacing_gain = 1.5; // TODO constant
-        cwnd_gain = 1.5;
+        cout << "Extra gain: " << extra_gain << endl;
+        pacing_gain = extra_gain * 1.5; // TODO constant
+        cwnd_gain = extra_gain * 1.5;
       } else if (phase == 1) {
         // TODO may not want to do if bandwidth estimate increases
         pacing_gain = 0.5;
@@ -242,7 +259,7 @@ void Controller::notify_timeout( void ) {
 unsigned int Controller::timeout_ms( void )
 {
   std::lock_guard<std::mutex> lock(global_lock);
-  return 1000; /* timeout of one second */
+  return 500; /* timeout of one second */
 }
 
 double Controller::get_bw_estimate()
