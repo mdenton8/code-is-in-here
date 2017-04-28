@@ -30,9 +30,9 @@ static bool start_up_drain = false;
 // TODO FIXME don't probe upwards during downwards slope
 
 static double curr_bw_slope_estimate = 0.0;
-static double prev_bw_sample = 0.0;
-static uint64_t prev_bw_sample_timestamp = 0;
-// static uint64_t curr_bw_estimate_timestamp = 1.0;
+// static double prev_bw_sample = 0.0;
+// static uint64_t prev_bw_sample_timestamp = 0;
+static uint64_t curr_bw_estimate_timestamp = 0;
 
 
 static double extra_gain = 1.0;
@@ -93,15 +93,18 @@ void Controller::datagram_was_sent( const uint64_t sequence_number,
 
 template<typename T>
 static T calcMaxInTimeWindow(uint64_t time_window, uint64_t curr_time,
-                             map<uint64_t, T>& m) {
+                             map<uint64_t, T>& m,
+                             uint64_t& ts) {
 
   auto left_time_window = (curr_time > time_window) ? m.lower_bound (curr_time - time_window) : m.begin();
   auto right_time_window = m.upper_bound (curr_time);
 
   T max_bw = numeric_limits<T>::min();
   for (auto it = left_time_window; it != right_time_window; ++it)
-    if (it->second > max_bw)
+    if (it->second > max_bw) {
       max_bw = it->second;
+      ts = it->first;
+    }
 
   return max_bw;
 }
@@ -119,6 +122,37 @@ static T calcMinInTimeWindow(uint64_t time_window, uint64_t curr_time,
       min_rtt = it->second;
 
   return min_rtt;
+}
+
+
+// credit to http://stackoverflow.com/questions/18939869/how-to-get-the-slope-of-a-linear-regression-line-using-c
+double Controller::bw_slope() {
+  cerr << "Last bw estimate timestamp: " << curr_bw_estimate_timestamp << endl;
+  auto last_bw_estimate = bw_estimates.lower_bound(curr_bw_estimate_timestamp);
+  auto end = bw_estimates.end();
+
+  double avgX = 0.0, avgY = 0.0;
+
+  for (auto it = last_bw_estimate; it != end; ++it) {
+    avgX += (it->first - curr_bw_estimate_timestamp); // free to shift, only need slope
+    avgY += it->second;
+  }
+
+  cerr << "AvgX: " << avgX << ", avgY: " << avgY << endl;
+
+  double numerator = 0.0;
+  double denominator = 0.0;
+
+  for (auto it = last_bw_estimate; it != end; ++it) {
+    numerator += (it->first - avgX) * (it->second - avgY);
+    denominator += (it->first - avgX) * (it->first - avgX);
+  }
+
+  if (denominator == 0) {
+    return 0.0; // don't know slope yet
+  }
+
+  return numerator / denominator;
 }
 
 /* An ack was received */
@@ -163,24 +197,27 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
   cerr << "BW_est (Mbps): " << bw_est * 8 / 1000.0 << endl;
 
 
-
+  // TODO REMOVE silly slope calculation doesn't work very well
   // estimate gradient
-  if (timestamp_ack_received != prev_bw_sample_timestamp) {
-    double new_slope = (bw_est - prev_bw_sample) / (timestamp_ack_received - prev_bw_sample_timestamp);
-    // update gradient
-    curr_bw_slope_estimate = 0.8 * curr_bw_slope_estimate + 0.2 * new_slope;
-    // update prev values
-    prev_bw_sample = bw_est;
-    prev_bw_sample_timestamp = timestamp_ack_received;
-  }
+  // if (timestamp_ack_received != prev_bw_sample_timestamp) {
+  //   double new_slope = (bw_est - prev_bw_sample) / (timestamp_ack_received - prev_bw_sample_timestamp);
+  //   // update gradient
+  //   curr_bw_slope_estimate = 0.8 * curr_bw_slope_estimate + 0.2 * new_slope;
+  //   // update prev values
+  //   prev_bw_sample = bw_est;
+  //   prev_bw_sample_timestamp = timestamp_ack_received;
+  // }
 
   // TODO does not update when ACKs are not being received?
   // // update with max on positive slope, with larger time window
   // if (curr_bw_slope_estimate > 0)
-  curr_bw_estimate = calcMaxInTimeWindow(bw_time_window, timestamp_ack_received, bw_estimates);
+  curr_bw_estimate = calcMaxInTimeWindow(bw_time_window, timestamp_ack_received, bw_estimates, curr_bw_estimate_timestamp);
   // else // on negative slope, update with min and more frequently // TODO FIXME does this perpetuate negative slop which will prevent us from probing?
   //   curr_bw_estimate = calcMaxInTimeWindow(90, timestamp_ack_received, bw_estimates);
 
+
+  // recalculate slope
+  curr_bw_slope_estimate = bw_slope();
 
 
   cerr << "Current estimation of slope: " << curr_bw_slope_estimate << endl;
@@ -266,7 +303,7 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
 
       // do not transition back to probing phase if our bandwidth is decreasing
       // TODO FIXME together with the pacing_gain thing with low slope below, we may never be able to recover from the drop in pacing_gain
-      if (phase > 6 && curr_bw_slope_estimate > 0)  {// TODO constant
+      if (phase > 6 && curr_bw_slope_estimate > -5.0)  {// TODO constant
         phase = 0;
       }
 
@@ -313,8 +350,9 @@ double Controller::get_pacing_gain()
   // currently just lowers pacing_gain if slope is negative.
   if (!start_up && !start_up_drain && phase > 1 && curr_bw_slope_estimate < 1) {
     // based on slope
-    // return 1.0 + (curr_bw_slope_estimate * 320) / curr_bw_estimate;
-    return 0.7;
+    uint64_t time_since_bw_estimate = (timestamp_ms() - curr_bw_estimate_timestamp);
+    return 1.0 + (curr_bw_slope_estimate * time_since_bw_estimate) / curr_bw_estimate;
+    // return 0.7;
   }
 
 

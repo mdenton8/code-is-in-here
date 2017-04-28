@@ -40,6 +40,8 @@ private:
 
   std::mutex global_lock;
 
+  double bw_slope();
+
 public:
   /* Public interface for the congestion controller */
   /* You can change these if you prefer, but will need to change
