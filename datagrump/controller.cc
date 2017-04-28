@@ -12,8 +12,8 @@ using namespace std;
 
 /* Default constructor */
 Controller::Controller( const bool debug )
-  : debug_( debug ), bw_time_window(240), rtt_time_window(30000),
-    curr_rtt_estimate(40), curr_bw_estimate(1.0), delivered_bytes(0),
+  : debug_( debug ), bw_time_window(320), rtt_time_window(30000),
+    curr_rtt_estimate(40), curr_bw_estimate(5.0), delivered_bytes(0),
     pacing_gain(1.0), cwnd_gain(2),
     phase(0), time_to_change_phase(40),
     packet_send_time(), packet_ack_time(), packet_ack_sent_time(),
@@ -51,8 +51,8 @@ unsigned int Controller::window_size( void )
     prev_bw_estimate = curr_bw_estimate;
     start_up = true;
     startup_bw_counter = 0;
-    pacing_gain = 2 / 0.6931471;
-    cwnd_gain = 2 / 0.6931471;
+    pacing_gain = 1.5 / 0.6931471;
+    cwnd_gain = 1.5 / 0.6931471;
   }
 
   return packets < 1 ? 1 : packets;
@@ -210,20 +210,23 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
         // change phase curr_rtt_estimate ms away from now (TODO maybe drain phase should get extra time if Probe phase got extra time?)
         time_to_change_phase = timestamp_ack_received + curr_rtt_estimate;
       }
-
+      if (rtt_est > curr_rtt_estimate * 4 && phase != 1) {
+          phase = 1;
+          time_to_change_phase = timestamp_ack_received + curr_rtt_estimate;
+      }
       // update pacing_gain based on phase
       if (phase == 0 || phase > 6) { // TODO constant
         phase = 0;
         // pacing_gain goes up
-        pacing_gain = 1.25; // TODO constant
+        pacing_gain = 1.5; // TODO constant
         cwnd_gain = 1.5;
       } else if (phase == 1) {
         // TODO may not want to do if bandwidth estimate increases
-        pacing_gain = 0.75;
+        pacing_gain = 0.5;
         cwnd_gain = 1.0;
       } else {
         pacing_gain = 1;
-        cwnd_gain = 1.1;
+        cwnd_gain = 1.25;
       }
     }
   }
