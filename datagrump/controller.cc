@@ -327,7 +327,7 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
           phase ++;
           extra_gain = 1.0;
         } else {
-          // extra_gain += 0.1;
+          extra_gain += 0.1;
         }
         prev_phase_bw_estimate = curr_bw_estimate;
         // change phase curr_rtt_estimate ms away from now (TODO maybe drain phase should get extra time if Probe phase got extra time?)
@@ -335,7 +335,7 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
       }
 
       // if rtt becomes too long, start draining immediately (fallback for everything else)
-      if (rtt_est > curr_rtt_estimate * 2.0 && phase != 1) {
+      if (rtt_est > curr_rtt_estimate * 4.0 && phase != 1) {
         // cerr << "immediately start draining!!!!!!!!!! RTT very high!" << endl;
         phase = 1;
         time_to_change_phase = timestamp_ack_received + curr_rtt_estimate;
@@ -386,11 +386,11 @@ double Controller::get_bw_estimate()
 double Controller::get_pacing_gain()
 {
   std::lock_guard<std::mutex> lock(global_lock);
-  if (!start_up && !start_up_drain && phase > 1 && curr_bw_slope_estimate < 1) {
+  if (!start_up && !start_up_drain && phase > 1 && curr_bw_slope_estimate < -1) {
     // based on slope
-    uint64_t time_since_bw_estimate = (timestamp_ms() - curr_bw_estimate_timestamp);
-    return 1.0 + (curr_bw_slope_estimate * time_since_bw_estimate) / curr_bw_estimate;
-    // return 0.7;
+    // uint64_t time_since_bw_estimate = (timestamp_ms() - curr_bw_estimate_timestamp);
+    // return 1.0 + (curr_bw_slope_estimate * time_since_bw_estimate) / curr_bw_estimate;
+    return 0.7;
   }
 
 
