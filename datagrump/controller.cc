@@ -43,12 +43,12 @@ unsigned int Controller::window_size( void )
 
   packets = cwnd_gain * (curr_rtt_estimate * curr_bw_estimate) / 1472;
 
-  // if ( debug_ || true) {
-  //   cerr << "At time " << timestamp_ms()
-  //        << " window size is " << packets
-  //        << " and curr_rtt_estimate * curr_bw_estimate = " << (curr_rtt_estimate * curr_bw_estimate)
-  //        << endl;
-  // }
+  if ( debug_ ) {
+    cerr << "At time " << timestamp_ms()
+         << " window size is " << packets
+         << " and curr_rtt_estimate * curr_bw_estimate = " << (curr_rtt_estimate * curr_bw_estimate)
+         << endl;
+  }
 
 
   if (packets <= 1 && !start_up) {
@@ -127,13 +127,8 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
   packet_ack_sent_time[sequence_number_acked] = recv_timestamp_acked;
 
 
-  // cerr << "--------------------------------------------" << endl;
-  // cerr << "Packet sent time: " << send_timestamp_acked << endl;
-
-
   uint64_t rtt_est = timestamp_ack_received -
                      send_timestamp_acked; // convert to ms
-  // cerr << "RTT_est (ms): " << rtt_est << endl;
 
   rtt_estimates.emplace(timestamp_ack_received, rtt_est);
   curr_rtt_estimate = calcMinInTimeWindow(rtt_time_window, timestamp_ack_received, rtt_estimates);
@@ -143,9 +138,6 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
   double bw_est = (delivered_bytes - packet_delivered[sequence_number_acked]) /
                   ((double)rtt_est);
   bw_estimates.emplace(timestamp_ack_received, bw_est);
-  // cerr << "Delivered between ACK and now: " << (delivered_bytes - packet_delivered[sequence_number_acked]) << endl;
-  // cerr << "BW_est (Mbps): " << bw_est * 8 / 1000.0 << endl;
-
 
 
   // estimate gradient
@@ -158,19 +150,7 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
     prev_bw_sample_timestamp = timestamp_ack_received;
   }
 
-  // // update with max on positive slope, with larger time window
-  // if (curr_bw_slope_estimate > 0)
   curr_bw_estimate = calcMaxInTimeWindow(bw_time_window, timestamp_ack_received, bw_estimates);
-  // else // on negative slope, update with min and more frequently // TODO FIXME does this perpetuate negative slop which will prevent us from probing?
-  //   curr_bw_estimate = calcMaxInTimeWindow(90, timestamp_ack_received, bw_estimates);
-
-
-
-  // cerr << "Current estimation of slope: " << curr_bw_slope_estimate << endl;
-  // cerr << "Curr bw estimate (Mbps): " << (curr_bw_estimate * 8 / 1000.0) << endl;
-  // cerr << "Curr rtt estimate (ms): " << (curr_rtt_estimate) << endl;
-
-
 
   if ( debug_) {
     cerr << "At time " << timestamp_ack_received
@@ -183,14 +163,11 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
   // screw with pacing_gain
 
   if (start_up) {
-    // cerr << "Received ACK in startup!" << endl;
     if (timestamp_ack_received >= time_to_change_phase) {
       time_to_change_phase = timestamp_ack_received + curr_rtt_estimate;
 
       // after one RTTProp, check to see if we have reached a plateau in bandwidth
 
-      // pacing_gain = pacing_gain * 2 / 0.6931471;
-      // cwnd_gain = cwnd_gain * 2 / 0.6931471;
       if (1.25 * prev_phase_bw_estimate > curr_bw_estimate)
         startup_bw_counter++;
       else
@@ -210,7 +187,6 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
   }
   else {
     if (start_up_drain) {
-      // cerr << "Received ACK in startup drain! RTT_est = " << rtt_est << ", curr rtt estimate = " << curr_rtt_estimate << endl;
       // stay in drain until RTT=RTTprop, then reset pacing gain and time_to_change_phase
       if (1.1 * curr_rtt_estimate > rtt_est) {
         start_up_drain = false;
@@ -236,7 +212,6 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
 
       // if rtt becomes too long, start draining immediately (fallback for everything else)
       if (rtt_est > curr_rtt_estimate * 3.0 && phase != 1) {
-        // cerr << "immediately start draining!!!!!!!!!! RTT very high!" << endl;
         phase = 1;
         time_to_change_phase = timestamp_ack_received + curr_rtt_estimate;
         extra_gain = 1.0;
@@ -251,7 +226,6 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
       if (phase == 0) {
         phase = 0;
         // pacing_gain goes up
-        // cout << "Extra gain: " << extra_gain << endl;
         pacing_gain = extra_gain * 1.25;
         cwnd_gain = extra_gain * 1.5;
       } else if (phase == 1) {
