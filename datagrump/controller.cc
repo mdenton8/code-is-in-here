@@ -93,7 +93,7 @@ void Controller::datagram_was_sent( const uint64_t sequence_number,
 
 template<typename T>
 static T calcMaxInTimeWindow(uint64_t time_window, uint64_t curr_time,
-                             map<uint64_t, T>& m,
+                             multimap<uint64_t, T>& m,
                              uint64_t& ts) {
 
   auto left_time_window = (curr_time > time_window) ? m.lower_bound (curr_time - time_window) : m.begin();
@@ -111,15 +111,16 @@ static T calcMaxInTimeWindow(uint64_t time_window, uint64_t curr_time,
 
 template<typename T>
 static T calcMinInTimeWindow(uint64_t time_window, uint64_t curr_time,
-                             map<uint64_t, T>& m) {
+                             multimap<uint64_t, T>& m) {
 
   auto left_time_window = (curr_time > time_window) ? m.lower_bound (curr_time - time_window) : m.begin();
   auto right_time_window = m.upper_bound (curr_time);
 
   T min_rtt = numeric_limits<T>::max();
-  for (auto it = left_time_window; it != right_time_window; ++it)
+  for (auto it = left_time_window; it != right_time_window; ++it) {
     if (it->second < min_rtt)
       min_rtt = it->second;
+  }
 
   return min_rtt;
 }
@@ -133,10 +134,16 @@ double Controller::bw_slope() {
 
   double avgX = 0.0, avgY = 0.0;
 
+  uint64_t n = 0;
+
   for (auto it = last_bw_estimate; it != end; ++it) {
     avgX += (it->first - curr_bw_estimate_timestamp); // free to shift, only need slope
     avgY += it->second;
+    n++;
   }
+
+  avgX /= n;
+  avgY /= n;
 
   cerr << "AvgX: " << avgX << ", avgY: " << avgY << endl;
 
@@ -179,7 +186,7 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
                      send_timestamp_acked; // convert to ms
   cerr << "RTT_est (ms): " << rtt_est << endl;
 
-  rtt_estimates[timestamp_ack_received] = rtt_est;
+  rtt_estimates.emplace(timestamp_ack_received, rtt_est);
   // TODO change 200 here
   curr_rtt_estimate = calcMinInTimeWindow(rtt_time_window, timestamp_ack_received, rtt_estimates);
 
@@ -192,7 +199,7 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
   delivered_bytes += 1472;
   double bw_est = (delivered_bytes - packet_delivered[sequence_number_acked]) /
                   ((double)rtt_est);
-  bw_estimates[timestamp_ack_received] = bw_est;
+  bw_estimates.emplace(timestamp_ack_received, bw_est);
   cerr << "Delivered between ACK and now: " << (delivered_bytes - packet_delivered[sequence_number_acked]) << endl;
   cerr << "BW_est (Mbps): " << bw_est * 8 / 1000.0 << endl;
 
