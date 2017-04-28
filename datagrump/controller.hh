@@ -31,9 +31,9 @@ private:
   std::map<uint64_t, uint64_t> packet_ack_sent_time;
 
   // timestamp of ACK received, and rtt estimate
-  std::map<uint64_t, uint64_t> rtt_estimates;
+  std::multimap<uint64_t, uint64_t> rtt_estimates;
 
-  std::map<uint64_t, double> bw_estimates;
+  std::multimap<uint64_t, double> bw_estimates;
 
   // map seq_num to delivered
   std::map<uint64_t, uint64_t> packet_delivered;
