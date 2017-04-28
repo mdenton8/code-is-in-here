@@ -161,6 +161,9 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
          << endl;
   }
 
+  // TODO delay-based for low-bandwidth?
+  // TODO if bandwidth decreasing, adjust pacing_gain according to the bandwidth gradient and a multiplication of the amount of time
+
   // screw with pacing_gain
 
   if (start_up) {
